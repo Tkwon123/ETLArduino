@@ -3,41 +3,79 @@
 #include <DHT.h>
 #include <SPI.h>
 
-#define DHTPIN 2 
-#define DHTTYPE DHT22
+#define DHTPIN 2 //reading from pin #2
+#define DHTTYPE DHT22 //DHT is the temperature sensor
 
 void callback(char* topic, byte* payload, unsigned int length) {
 // handle message arrived
 }
 
+
+//ETL's Arduino Yun Mac address; identifies the unique address for IBM to listen in on
+byte mac[] = { 0x90, 0xA2, 0xDA, 0xF0, 0x4E, 0x08 };
+char macstr[] = "90a2daf04e08";
+
+//IBM's MQTT connection information 
+char serverName[] = "quickstart.messaging.internetofthings.ibmcloud.com";
+//char serverName[] = "192.168.252.177"; //my local moquitto server to test on
+String clientName = String("d:quickstart:arduino:") + macstr;
+String topicName = String("iot-2/evt/status/fmt/json");
+
 YunClient yun;
-PubSubClient client("192.168.252.177", 1885, callback, yun);
+PubSubClient client(serverName, 1883, callback, yun); //The port is in here!
 DHT dht(DHTPIN, DHTTYPE);
 
-  float humid = dht.readHumidity();
-  // Read temperature as Celsius
-  float tempC = dht.readTemperature();
-  // Read temperature as Fahrenheit
-  float tempF = dht.readTemperature(true);
-  
+//Initializing temperature variables
+float humid = 0;
+float tempC = 0;
+float tempF = 0;
+
 void setup()
 {
-
 Bridge.begin();
-
-client.connect("yun");
-client.publish("/sensor/test","this works better!");
-client.subscribe("/sensor/test");
-
+Serial.begin(9600);
+delay(2000);
 }
 
-void loop()
-{
-getData();
+void loop(){
+//converting strings into characters as pubsub library requests
+char topicStr[26];
+topicName.toCharArray(topicStr,26);
+char clientStr[34];
+clientName.toCharArray(clientStr,34);
+
+
+if (!client.connected())
+  Serial.println ("Trying to connect...");
+  Serial.println (clientStr);
+  client.connect(clientStr);
+  if (client.connected())
+    Serial.println ("Connected!");
+    getData();
+    Serial.println ("Data collected");
+    String json = buildJson();
+    Serial.println ("Json formatted"); 
+    char jsonStr[200]; 
+    json.toCharArray(jsonStr,200);
+
+    boolean pubresult = client.publish(topicStr,jsonStr); //store the success result
+
+Serial.print("attempt to send ");
+Serial.println(jsonStr);
+Serial.print("to ");
+Serial.println(topicStr);
+
+if (pubresult)
+  Serial.println("successfully sent");
+else
+  Serial.println("unsuccessfully sent");
 //client.loop();
+delay(5000); //5 second pauses in between
+
 }
 
 String buildJson() {
+//Just a bunch of formatting to make the string palatable
   String data = "{";
   data+="\n";
   data+= "\"d\": {";
@@ -58,28 +96,12 @@ String buildJson() {
   data+="}";
   data+="\n";
   data+="}";
-  Serial.println(data);
   return data;
 }
 
 void getData() {
-  int chk = dht.read();
-  switch (chk)
-  {
-  case 0: 
-    Serial.println("Read OK"); 
-    tempF = dht.readTemperature(true);
-    tempC = dht.readTemperature();
-    humid = dht.readHumidity();
-    break;
-  case -1: 
-    Serial.println("Checksum error"); 
-    break;
-  case -2: 
-    Serial.println("Time out error"); 
-    break;
-  default: 
-    Serial.println("Unknown error"); 
-    break;
-  }
+  //Reading temperature from DHT sensor
+  humid = dht.readHumidity();
+  tempC = dht.readTemperature();
+  tempF = dht.readTemperature(true); 
 }
